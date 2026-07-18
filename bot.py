@@ -116,12 +116,10 @@ async def check_liquidity_and_bet(target_temp: int):
                 return
                 
             best_ask = asks[0]
-            best_ask_price = float(best_ask.get("price"))  # Цена покупки 1 акции (например, 0.85$)
-            available_liquidity_shares = float(best_ask.get("size")) # Доступный объем акций
+            best_ask_price = float(best_ask.get("price"))  
+            available_liquidity_shares = float(best_ask.get("size")) 
             
-            # Лимит на ОДНУ сделку в долларах (USDC)
             free_balance = 100.0  
-            
             required_money = available_liquidity_shares * best_ask_price
             
             if free_balance >= required_money:
@@ -132,12 +130,10 @@ async def check_liquidity_and_bet(target_temp: int):
                 cost = bet_amount_shares * best_ask_price
                 
             if bet_amount_shares > 0:
-                # Математика PnL для исхода 'NO':
                 total_payout = bet_amount_shares * 1.00
                 net_pnl = total_payout - cost
                 pnl_percent = (net_pnl / cost) * 100 if cost > 0 else 0
                 
-                # Отправляем отчет в чат
                 await bot.send_message(
                     chat_id=state.user_chat_id,
                     text=f"📊 **ОТЧЕТ О СДЕЛКЕ (СИМУЛЯЦИЯ)**\n"
@@ -223,7 +219,8 @@ async def cmd_start(message: types.Message):
         reply_markup=get_main_keyboard()
     )
 
-@dp.message(lambda message: message.text == "▶️ СТАРТ")
+# Исправлено: Свободная проверка кнопки СТАРТ
+@dp.message(lambda message: message.text and "СТАРТ" in message.text)
 async def start_button_click(message: types.Message, state_ctx: FSMContext):
     if state.is_running:
         await message.answer("⚠️ Бот уже запущен.")
@@ -258,7 +255,8 @@ async def process_link(message: types.Message, state_ctx: FSMContext):
     await state_ctx.clear()
     asyncio.create_task(monitoring_worker(message.chat.id))
 
-@dp.message(lambda message: message.text == "⏸️ СТОП")
+# Исправлено: Свободная проверка кнопки СТОП
+@dp.message(lambda message: message.text and "СТОП" in message.text)
 async def stop_bot(message: types.Message):
     if not state.is_running:
         await message.answer("⚠️ Бот не запущен.")
@@ -266,7 +264,8 @@ async def stop_bot(message: types.Message):
     state.is_running = False
     await message.answer("🛑 Мониторинг остановлен.")
 
-@dp.message(lambda message: message.text == "📊 СТАТУС")
+# Исправлено: Свободная проверка кнопки СТАТУС
+@dp.message(lambda message: message.text and "СТАТУС" in message.text)
 async def status_bot(message: types.Message):
     status = "АКТИВЕН 🟢" if state.is_running else "ВЫКЛЮЧЕН 🛑"
     slug = state.target_event_slug if state.target_event_slug else "Не выбрано"
@@ -281,10 +280,8 @@ async def status_bot(message: types.Message):
     )
 
 async def main():
-    # Исправление: принудительно закрываем старые сессии опроса Telegram перед стартом нового контейнера
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-            
