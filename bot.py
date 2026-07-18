@@ -1,34 +1,45 @@
+import os
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
 # Включаем логирование
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-# ТОКЕН БОТА (Render должен брать его из Environment Variables, либо вставь свой вместо "")
-BOT_TOKEN = "ТВОЙ_ТОКЕН_БОТА" 
+# Берем токен из переменных окружения Render
+API_TOKEN = os.environ.get("API_TOKEN")
+METAR_URL = "https://tgftp.nws.noaa.gov/data/observations/metar/stations/"
+POLYMARKET_API_URL = "https://clob.polymarket.com"
 
-bot = Bot(token=BOT_TOKEN)
+if not API_TOKEN:
+    raise ValueError("Критическая ошибка: Переменная API_TOKEN не найдена в окружении Render!")
+
+bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# Состояния FSM для отслеживания ввода ссылки
+# Состояния FSM
 class SetupStates(StatesGroup):
     waiting_for_link = State()
 
-# Глобальный объект для хранения статуса работы (симуляция простой базы данных)
+# Глобальное состояние бота
 class BotState:
     def __init__(self):
         self.is_running = False
-        self.target_event_slug = None
+        self.last_processed_time = None
         self.current_max_temp = None
         self.user_chat_id = None
+        self.target_event_slug = None
 
 state = BotState()
 
-# Клавиатура главного меню
+# Клавиатура управления
 def get_main_keyboard():
     kb = [
         [types.KeyboardButton(text="▶️ СТАРТ"), types.KeyboardButton(text="⏸️ СТОП")],
@@ -36,45 +47,45 @@ def get_main_keyboard():
     ]
     return types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
-# Имитация воркера мониторинга (замени на свою логику парсинга Polymarket)
+# Заглушка воркера (сюда вернется твоя логика check_liquidity_and_bet)
 async def monitoring_worker(chat_id):
     state.user_chat_id = chat_id
     while state.is_running:
-        logging.info("Мониторинг активен, проверка данных...")
-        # Тут должна быть твоя логика check_liquidity_and_bet
+        try:
+            logging.info("Мониторинг активен, проверка условий...")
+            # Твоя логика проверки ликвидности и ставок должна быть тут
+        except Exception as e:
+            logging.error(f"Ошибка в воркере: {e}")
         await asyncio.sleep(1800)  # Раз в полчаса
 
 # Команда /start
-@dp.message(F.text == "/start")
+@dp.message(Command("start"))
 async def cmd_start(message: types.Message, state_ctx: FSMContext):
-    await state_ctx.clear()  # Полный сброс FSM принудительно
+    await state_ctx.clear()  # Принудительный сброс состояний
     await message.answer(
         "Бот-полуавтомат настроен на вывод отчетов и PnL прямо в этот чат.\n"
         "Нажмите **▶️ СТАРТ** для ввода ссылки на рынок.",
         reply_markup=get_main_keyboard()
     )
 
-# Обработчик кнопки СТАРТ (срабатывает при любом состоянии FSM благодаря F.text)
+# Исправленная кнопка СТАРТ
 @dp.message(F.text.contains("СТАРТ"))
 async def start_button_click(message: types.Message, state_ctx: FSMContext):
-    await state_ctx.clear()  # Чистим любые зависшие состояния
-    
+    await state_ctx.clear()
     if state.is_running:
         await message.answer("⚠️ Бот уже запущен.")
         return
-        
     await message.answer("🔗 Отправьте ссылку на событие Polymarket:")
     await state_ctx.set_state(SetupStates.waiting_for_link)
 
-# Обработчик ввода ссылки (сработает только после нажатия СТАРТ)
+# Обработка входящей ссылки
 @dp.message(SetupStates.waiting_for_link)
 async def process_link(message: types.Message, state_ctx: FSMContext):
     link = message.text
     if "polymarket.com" not in link:
-        await message.answer("❌ Это не похоже на ссылку Polymarket. Попробуйте еще раз или нажмите СТОП.")
+        await message.answer("❌ Это не похоже на ссылку Polymarket. Попробуйте еще раз.")
         return
 
-    # Извлекаем слаг из ссылки для отчетов
     slug = link.split("/")[-1]
     state.target_event_slug = slug
     state.is_running = True
@@ -83,23 +94,20 @@ async def process_link(message: types.Message, state_ctx: FSMContext):
         f"✅ Рынок успешно выбран: `{slug}`\n"
         f"🚀 Мониторинг запущен! Отчеты будут приходить сюда каждые 30 минут."
     )
-    
     await state_ctx.clear()
     asyncio.create_task(monitoring_worker(message.chat.id))
 
-# Обработчик кнопки СТОП
+# Исправленная кнопка СТОП
 @dp.message(F.text.contains("СТОП"))
 async def stop_bot(message: types.Message, state_ctx: FSMContext):
-    await state_ctx.clear()  # На случай если нажали СТОП во время ввода ссылки
-    
+    await state_ctx.clear()
     if not state.is_running:
         await message.answer("⚠️ Бот не запущен.")
         return
-        
     state.is_running = False
     await message.answer("🛑 Мониторинг остановлен.")
 
-# Обработчик кнопки СТАТУС
+# Исправленная кнопка СТАТУС
 @dp.message(F.text.contains("СТАТУС"))
 async def status_bot(message: types.Message):
     status = "АКТИВЕН 🟢" if state.is_running else "ВЫКЛЮЧЕН 🛑"
@@ -114,13 +122,10 @@ async def status_bot(message: types.Message):
         f"● Каждые полчаса бот выводит отчеты сюда."
     )
 
-# Главная функция запуска
+# Главный запуск
 async def main():
-    # Очищаем очередь старых сообщений, скопившихся пока бот лежал, 
-    # чтобы он не спамил старыми ответами при перезапуске на Render
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-        
