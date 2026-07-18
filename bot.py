@@ -133,12 +133,11 @@ async def check_liquidity_and_bet(target_temp: int):
                 
             if bet_amount_shares > 0:
                 # Математика PnL для исхода 'NO':
-                # Выплата при победе = кол-во акций * 1.00$
                 total_payout = bet_amount_shares * 1.00
                 net_pnl = total_payout - cost
                 pnl_percent = (net_pnl / cost) * 100 if cost > 0 else 0
                 
-                # Отправляем отчет СЮДА ЖЕ в чат
+                # Отправляем отчет в чат
                 await bot.send_message(
                     chat_id=state.user_chat_id,
                     text=f"📊 **ОТЧЕТ О СДЕЛКЕ (СИМУЛЯЦИЯ)**\n"
@@ -193,7 +192,6 @@ async def monitoring_worker(chat_id):
                                         f"🚀 Рекорд дня побит! Было: {previous_max}°C -> Стало: **{temp}°C** (Сводка {obs_time} UTC)."
                                     )
                                     
-                                    # Температура выросла, запускаем ставки на отвалившиеся уровни
                                     for cold_temp in range(previous_max, temp):
                                         await check_liquidity_and_bet(cold_temp)
                                 else:
@@ -283,8 +281,10 @@ async def status_bot(message: types.Message):
     )
 
 async def main():
+    # Исправление: принудительно закрываем старые сессии опроса Telegram перед стартом нового контейнера
+    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
+            
