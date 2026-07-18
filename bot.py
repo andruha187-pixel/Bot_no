@@ -37,7 +37,7 @@ class BotState:
         self.user_chat_id = None
         self.target_event_slug = None
 
-state = BotState()
+bot_state = BotState()
 
 # Клавиатура управления
 def get_main_keyboard():
@@ -47,21 +47,20 @@ def get_main_keyboard():
     ]
     return types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
-# Заглушка воркера (сюда вернется твоя логика check_liquidity_and_bet)
+# Заглушка воркера
 async def monitoring_worker(chat_id):
-    state.user_chat_id = chat_id
-    while state.is_running:
+    bot_state.user_chat_id = chat_id
+    while bot_state.is_running:
         try:
             logging.info("Мониторинг активен, проверка условий...")
-            # Твоя логика проверки ликвидности и ставок должна быть тут
         except Exception as e:
             logging.error(f"Ошибка в воркере: {e}")
         await asyncio.sleep(1800)  # Раз в полчаса
 
 # Команда /start
 @dp.message(Command("start"))
-async def cmd_start(message: types.Message, state_ctx: FSMContext):
-    await state_ctx.clear()  # Принудительный сброс состояний
+async def cmd_start(message: types.Message, state: FSMContext):
+    await state.clear()  # Принудительный сброс состояний
     await message.answer(
         "Бот-полуавтомат настроен на вывод отчетов и PnL прямо в этот чат.\n"
         "Нажмите **▶️ СТАРТ** для ввода ссылки на рынок.",
@@ -70,49 +69,49 @@ async def cmd_start(message: types.Message, state_ctx: FSMContext):
 
 # Исправленная кнопка СТАРТ
 @dp.message(F.text.contains("СТАРТ"))
-async def start_button_click(message: types.Message, state_ctx: FSMContext):
-    await state_ctx.clear()
-    if state.is_running:
+async def start_button_click(message: types.Message, state: FSMContext):
+    await state.clear()
+    if bot_state.is_running:
         await message.answer("⚠️ Бот уже запущен.")
         return
     await message.answer("🔗 Отправьте ссылку на событие Polymarket:")
-    await state_ctx.set_state(SetupStates.waiting_for_link)
+    await state.set_state(SetupStates.waiting_for_link)
 
 # Обработка входящей ссылки
 @dp.message(SetupStates.waiting_for_link)
-async def process_link(message: types.Message, state_ctx: FSMContext):
+async def process_link(message: types.Message, state: FSMContext):
     link = message.text
     if "polymarket.com" not in link:
         await message.answer("❌ Это не похоже на ссылку Polymarket. Попробуйте еще раз.")
         return
 
     slug = link.split("/")[-1]
-    state.target_event_slug = slug
-    state.is_running = True
+    bot_state.target_event_slug = slug
+    bot_state.is_running = True
     
     await message.answer(
         f"✅ Рынок успешно выбран: `{slug}`\n"
         f"🚀 Мониторинг запущен! Отчеты будут приходить сюда каждые 30 минут."
     )
-    await state_ctx.clear()
+    await state.clear()
     asyncio.create_task(monitoring_worker(message.chat.id))
 
 # Исправленная кнопка СТОП
 @dp.message(F.text.contains("СТОП"))
-async def stop_bot(message: types.Message, state_ctx: FSMContext):
-    await state_ctx.clear()
-    if not state.is_running:
+async def stop_bot(message: types.Message, state: FSMContext):
+    await state.clear()
+    if not bot_state.is_running:
         await message.answer("⚠️ Бот не запущен.")
         return
-    state.is_running = False
+    bot_state.is_running = False
     await message.answer("🛑 Мониторинг остановлен.")
 
 # Исправленная кнопка СТАТУС
 @dp.message(F.text.contains("СТАТУС"))
 async def status_bot(message: types.Message):
-    status = "АКТИВЕН 🟢" if state.is_running else "ВЫКЛЮЧЕН 🛑"
-    slug = state.target_event_slug if state.target_event_slug else "Не выбрано"
-    max_t = f"{state.current_max_temp}°C" if state.current_max_temp is not None else "Не определена"
+    status = "АКТИВЕН 🟢" if bot_state.is_running else "ВЫКЛЮЧЕН 🛑"
+    slug = bot_state.target_event_slug if bot_state.target_event_slug else "Не выбрано"
+    max_t = f"{bot_state.current_max_temp}°C" if bot_state.current_max_temp is not None else "Не определена"
     
     await message.answer(
         f"📋 **Текущее состояние:**\n"
@@ -129,3 +128,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
